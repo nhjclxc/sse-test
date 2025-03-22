@@ -1,3 +1,12 @@
 spring:
   application:
     name: sse-test
+  profiles:
+    active: apikey # 激活该配置文件，以读取apikey，
+#    注意：为了保护apikey的隐私性，该配置文件没有被上传到git，需本地创建一个名为"application-apikey.yml"的配置文件,配置信息(deepseek)如下
+#deepseek:
+#  api: sk-
+
+# 8080被前端占用了,后端使用9090
+server:
+  port: 9090
