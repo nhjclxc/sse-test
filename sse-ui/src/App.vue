@@ -1,13 +1,16 @@
 <template>
   <SSEUI />
+<!--  <SSEUI-WebFlux />-->
 </template>
 
 <script>
 import SSEUI from './components/SSEUI.vue'
+import SSEUIWebFlux from "@/components/SSEUI-WebFlux.vue";
 
 export default {
   name: 'App',
   components: {
+    SSEUIWebFlux,
     SSEUI: SSEUI
   }
 }

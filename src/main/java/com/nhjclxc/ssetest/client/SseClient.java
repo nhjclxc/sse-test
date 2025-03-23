@@ -5,13 +5,14 @@ import com.alibaba.fastjson2.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
 import org.jetbrains.annotations.NotNull;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import reactor.core.publisher.Flux;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.Reader;
+import java.io.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -43,6 +44,10 @@ public class SseClient {
     private static final String url = "https://api.deepseek.com/chat/completions";
     private static final String DONE = "data: [DONE]";
     private static final String STOP = "stop";
+
+    @Autowired
+    private WebClient.Builder webClientBuilder;
+
 
     /**
      * 创建连接
@@ -186,7 +191,7 @@ public class SseClient {
                 JSONObject response = JSONObject.parse(line.substring(5));
 //                System.out.println(response);
                 String stop = response.getJSONArray("choices").getJSONObject(0).getString("finish_reason");
-                if (STOP.equals(stop)){
+                if (STOP.equals(stop)) {
 
                     JSONObject system = new JSONObject();
                     system.put("role", "assistant");
@@ -258,6 +263,100 @@ public class SseClient {
         return bufferedReader;
     }
 
+
+    public Flux<Object> sendMsgByFlux(String uuid, String content) {
+
+        if (null == content || "".equals(content)) {
+            log.info("{} 参数异常，msg为null", uuid);
+            return null;
+        }
+        // 判断是否有聊天记录
+        JSONArray messages = messageList.getOrDefault(uuid, new JSONArray());
+        JSONObject message = new JSONObject();
+        message.put("role", "user");
+        message.put("content", content); // "What are you model???"
+        messages.add(message);
+        messageList.putIfAbsent(uuid, messages);
+
+        JSONObject jsonBody = new JSONObject();
+        jsonBody.put("messages", messages);
+        jsonBody.put("model", "deepseek-chat");
+        jsonBody.put("frequency_penalty", 0);
+        jsonBody.put("max_tokens", 2048);
+        jsonBody.put("stream", true); // 如果设置为 True，将会以 SSE（server-sent events）的形式以流式发送消息增量。消息流以 data: [DONE] 结尾。
+        jsonBody.put("temperature", 1.0);
+// {"messages":[{"role":"user","content":"What are you model???"}],"model":"deepseek-chat","frequency_penalty":0,"max_tokens":2048,"stream":true,"temperature":1.0}
+
+        log.info("sendMsgByFlux：{}", jsonBody.toJSONString());
+
+        WebClient webClient = webClientBuilder.baseUrl("https://api.deepseek.com").build();
+
+        StringBuilder responseContent = new StringBuilder();
+        Flux<Object> objectFlux = webClient.post()
+                .uri("/chat/completions")  // 替换成真实的 API 地址
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .accept(org.springframework.http.MediaType.APPLICATION_JSON)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .header("Authorization", "Bearer " + deepseekAPI)
+                .bodyValue(jsonBody)
+                .retrieve()
+                .bodyToFlux(String.class)
+                .map(line -> processAsync(line, responseContent, messages));
+
+        return objectFlux;
+
+    }
+
+
+    /**
+     * 异步处理每一条流返回的数据
+     */
+    private String processAsync(String line, StringBuilder responseContent, JSONArray messages) {
+        if ("".equals(line)) {
+            return "";
+        }
+
+        // 1、判断是否最后一个数据片，是的话结束数据发送
+        if ("[DONE]".equals(line)) {
+            return EOS;
+        }
+
+// 第一片     ：{"id":"524caa8e-30e1-4b70-a2d6-80488f1bcb1a","object":"chat.completion.chunk","created":1742697647,"model":"deepseek-chat","system_fingerprint":"fp_3a5770e1b4_prod0225","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}]}
+// 其他片     ：{"id":"524caa8e-30e1-4b70-a2d6-80488f1bcb1a","object":"chat.completion.chunk","created":1742697647,"model":"deepseek-chat","system_fingerprint":"fp_3a5770e1b4_prod0225","choices":[{"index":0,"delta":{"content":"It"},"logprobs":null,"finish_reason":null}]}
+// 倒数第二片： {"id":"524caa8e-30e1-4b70-a2d6-80488f1bcb1a","object":"chat.completion.chunk","created":1742697647,"model":"deepseek-chat","system_fingerprint":"fp_3a5770e1b4_prod0225","choices":[{"index":0,"delta":{"content":""},"logprobs":null,"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":38,"total_tokens":42,"prompt_tokens_details":{"cached_tokens":0},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":4}}
+// 最后一片：[DONE]
+        JSONObject response = JSONObject.parse(line);
+        JSONObject choices = response.getJSONArray("choices").getJSONObject(0);
+
+        // 2、判断是不是开始
+//        "role":"assistant"
+        String role = choices.getString("role");
+        if ("assistant".equals(role)) {
+            // 开始的数据片
+            return BOS;
+        }
+
+        // 3、倒数第二个数据片
+        String stop = choices.getString("finish_reason");
+        if ("stop".equals(stop)) {
+            JSONObject system = new JSONObject();
+            system.put("role", "assistant");
+            system.put("content", responseContent.toString());
+            messages.add(system);
+            return EOS;
+        }
+
+        // 4、前面的 n - 2 个数据片，直接通过 sse 发送前端，并且临时保存每一个消息片，以便在最后一篇的时候用于保存本次聊天的消息记录
+        JSONObject delta = response.getJSONArray("choices").getJSONObject(0).getJSONObject("delta");
+
+        // 用于保存本次聊天记录
+        responseContent.append(delta.getString("content"));
+
+        // 发送这一个消息片给前端
+        // json传参保证空格不丢失 或者使用特殊字符进行占位，但是目前还不知道其他字符会不会丢失，因此，使用json从而五险在关心字符丢失问题
+        return delta.toJSONString();
+    }
 
     /**
      * 断开

@@ -35,10 +35,11 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+
+        <!--        提供了WebFlux框架的核心功能 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
+            <artifactId>spring-boot-starter-webflux</artifactId>
         </dependency>
 
         <!-- https://mvnrepository.com/artifact/org.projectlombok/lombok -->

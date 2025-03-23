@@ -2,7 +2,7 @@
 
 
   <div class="chat-container">
-    SSEUI
+    SSEUI-WebFlux
     <div class="chat-window" ref="chatWindow">
 
       <div
@@ -37,7 +37,7 @@
 import {ElMessage} from 'element-plus'
 import axios from 'axios'
 // 支持 Markdown 语法样式显示
-import { marked } from "marked";
+import {marked} from "marked";
 
 /*
 客户端：
@@ -50,7 +50,7 @@ const BOS = "<BOS>"
 const EOS = "<EOS>"
 
 export default {
-  name: 'SSEUI',
+  name: 'SSEUI-WebFlux',
 
   data() {
     return {
@@ -78,26 +78,112 @@ export default {
   },
   methods: {
     initSSE() {
-      // 确保该 客户端 可以使用sse功能
-      if (window.EventSource) {
+      // // 确保该 客户端 可以使用sse功能
+      // if (window.EventSource) {
+      //
+      //   this.eventSource = new EventSource("http://localhost:9090/sse/createSse?uuid=" + this.uuid); // 连接服务器 SSE 接口
+      //
+      //   if (this.eventSource) {
+      //     console.log(this.uuid, '连接SSE成功！！！');
+      //     ElMessage({
+      //       message: '服务器连接成功。',
+      //       type: 'success',
+      //     })
+      //   }
+      //
+      //   // 监听onmessage消息
+      //   this.eventSource.onmessage = (event) => {
+      //
+      //     //去除出字符串"T"两端的引号“
+      //     let msg = event.data //.replace(/^"|"$/g, '');
+      //     console.log('msg---' + msg);
+      //     this.content += msg;
+      //
+      //
+      //
+      //     // 判断是开始还是结束或是正常的消息
+      //     if (BOS === msg) {
+      //       // console.log('flag BOS',msg)
+      //
+      //       // 第一次接收到这个 entId 的消息，
+      //       this.bufferedText = ""; // 清空缓冲区，准备接收新消息
+      //       this.messageList.push({role: "GPT", text: ""}); // 先添加一个空消息对象
+      //     } else if (EOS === msg) {
+      //       // console.log('flag EOS', msg);
+      //
+      //       // 清空缓冲区，准备下一条消息
+      //       // 消息完成，Vue 会自动响应式更新
+      //       this.bufferedText = "";
+      //       // 消息接收完毕，自动滚动到底部
+      //       this.scrollToBottom();
+      //     } else {
+      //       // console.log('flag msg---' + msg);
+      //
+      //       // 解析json
+      //       const jsonMsg = JSON.parse(msg);
+      //       // 找到当前最新的消息对象，并更新其 text 字段
+      //       if (this.messageList.length > 0) {
+      //         this.messageList[this.messageList.length - 1].text += jsonMsg["content"];
+      //         // if (!this.messageList[this.messageList.length - 1].buffer) {
+      //         //   this.messageList[this.messageList.length - 1].buffer = [];
+      //         // }
+      //         // this.messageList[this.messageList.length - 1].buffer.push(jsonMsg["content"]);
+      //         // this.messageList[this.messageList.length - 1].text = this.messageList[this.messageList.length - 1].buffer.join('');
+      //       }
+      //
+      //       // 由于 Vue 不能检测数组对象属性变化，需要手动触发更新
+      //       this.$forceUpdate();
+      //
+      //     }
+      //
+      //   };
+      //
+      //   // 监听错误
+      //   this.eventSource.onerror = (error) => {
+      //     console.error("SSE 连接错误:", error);
+      //     ElMessage({
+      //       message: 'SSE 连接错误' + error,
+      //       type: 'error',
+      //     })
+      //     this.closeSSE();
+      //   };
+      // } else {
+      //   console.error("当前浏览器不支持 SSE");
+      //   ElMessage({
+      //     message: '当前浏览器不支持 SSE',
+      //     type: 'error',
+      //   })
+      // }
+    },
+    closeSSE() {
+      if (this.eventSource) {
+        this.eventSource.close();
+        this.eventSource = null;
+      }
+    },
+    sendMessage() {
+      if (!this.newMessage.trim())
+        return;
 
-        this.eventSource = new EventSource("http://localhost:9090/sse/createSse?uuid=" + this.uuid); // 连接服务器 SSE 接口
-
+      if (this.newMessage.trim()) {
         if (this.eventSource) {
-          console.log(this.uuid, '连接SSE成功！！！');
-          ElMessage({
-            message: '服务器连接成功。',
-            type: 'success',
-          })
+          this.eventSource.close();
         }
 
-        // 注意一：这里实现 SSE 接收的效果
-        // 监听onmessage消息
+        var params = {
+          uuid: this.uuid,
+          text: this.newMessage
+        }
+
+        this.newMessage = ''; // 清空输入框
+
+        this.eventSource = new EventSource(`http://localhost:9090/sse/sendMsgByFlux?uuid=${params.uuid}&text=${params.text}`);
+        console.log('this.eventSource', this.eventSource)
         this.eventSource.onmessage = (event) => {
 
           //去除出字符串"T"两端的引号“
           let msg = event.data //.replace(/^"|"$/g, '');
-          // console.log(' msg', msg);
+          console.log('msg---' + msg);
 
           // 判断是开始还是结束或是正常的消息
           if (BOS === msg) {
@@ -122,76 +208,21 @@ export default {
             // 找到当前最新的消息对象，并更新其 text 字段
             if (this.messageList.length > 0) {
               this.messageList[this.messageList.length - 1].text += jsonMsg["content"];
-              // if (!this.messageList[this.messageList.length - 1].buffer) {
-              //   this.messageList[this.messageList.length - 1].buffer = [];
-              // }
-              // this.messageList[this.messageList.length - 1].buffer.push(jsonMsg["content"]);
-              // this.messageList[this.messageList.length - 1].text = this.messageList[this.messageList.length - 1].buffer.join('');
             }
 
             // 由于 Vue 不能检测数组对象属性变化，需要手动触发更新
             this.$forceUpdate();
 
           }
+          this.eventSource.onerror = () => {
+            this.eventSource.close();
+          };
 
-        };
 
-        // 监听错误
-        this.eventSource.onerror = (error) => {
-          console.error("SSE 连接错误:", error);
-          ElMessage({
-            message: 'SSE 连接错误' + error,
-            type: 'error',
-          })
-          this.closeSSE();
-        };
-      } else {
-        console.error("当前浏览器不支持 SSE");
-        ElMessage({
-          message: '当前浏览器不支持 SSE',
-          type: 'error',
-        })
-      }
-    },
-    closeSSE() {
-      if (this.eventSource) {
-        this.eventSource.close();
-        this.eventSource = null;
-      }
-    },
-    sendMessage() {
-      if (!this.newMessage.trim())
-        return;
 
-      if (this.newMessage.trim()) {
+          // 添加用户消息
 
-        axios.get('http://localhost:9090/sse/sendMsg', {
-          params: {
-            uuid: this.uuid,
-            text: this.newMessage
-          }
-        })
-            .then(response => {
-              console.log('请求成功:', response);
-              console.log('请求成功:', response.data);
-              // if (response.data) {
-              //   this.eventSource = response.data
-              // }
-
-            })
-            .catch(error => {
-              console.error('请求失败:', error);
-            });
-
-        // 添加用户消息
-        this.messageList.push({role: 'User', text: this.newMessage});
-        this.newMessage = ''; // 清空输入框
-        this.$nextTick(() => this.$refs.messageInput.focus()); // 保持输入框焦点
-
-        // // 模拟 ChatGPT 回复
-        // setTimeout(() => {
-        //   this.messageList.push({role: 'GPT', text: 'ChatGPT 回复: ' + userMessage});
-        // }, 1000);
+        }
       }
     },
     handleEnter(event) {
@@ -203,14 +234,16 @@ export default {
         event.preventDefault();  // 阻止默认行为，以便不换行
         this.sendMessage();
       }
-    },
+    }
+    ,
     // 新消息出现时，自动滚动到底部
     scrollToBottom() {
       this.$nextTick(() => {
         const chatWindow = this.$refs.chatWindow;
         chatWindow.scrollTop = chatWindow.scrollHeight;
       });
-    },
+    }
+    ,
     renderMarkdown(text) {
       return marked(text);
     }
