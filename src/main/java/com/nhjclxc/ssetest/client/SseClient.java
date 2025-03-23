@@ -48,7 +48,7 @@ public class SseClient {
      * 创建连接
      */
     public SseEmitter createSse(String uuid) {
-        System.out.println("deepseekAPI " + deepseekAPI);
+
         //默认30秒超时,设置为0L则永不超时
         SseEmitter sseEmitter = new SseEmitter(0L);
         //完成后回调
@@ -127,15 +127,19 @@ public class SseClient {
         }
     }
 
-    public void sendMessageByDeepSeek(String uuid, String content) {
+    public SseEmitter sendMessageByDeepSeek(String uuid, String content) {
         if (null == content || "".equals(content)) {
             log.info("{} 参数异常，msg为null", uuid);
-            return;
+            return null;
         }
         SseEmitter sseEmitter = sseEmitterMap.get(uuid);
+        boolean newSseEmitterFlag = false;
         if (sseEmitter == null) {
             log.info("消息推送失败uuid:[{}],没有创建连接，请重试。", uuid);
-            return;
+            // 连接客户端
+            sseEmitter = createSse(uuid);
+            sseEmitterMap.put(uuid, sseEmitter);
+            newSseEmitterFlag = true;
         }
         String restMsgUuid = UUID.randomUUID().toString();
         try {
@@ -194,12 +198,13 @@ public class SseClient {
                 }
 
                 // 3、前面的 n - 2 个数据片，直接通过 sse 发送前端，并且临时保存每一个消息片，以便在最后一篇的时候用于保存本次聊天的消息记录
-                String c = response.getJSONArray("choices").getJSONObject(0).getJSONObject("delta").getString("content");
+                JSONObject delta = response.getJSONArray("choices").getJSONObject(0).getJSONObject("delta");
                 // 发送这一个消息片给前端
                 // json传参保证空格不丢失 或者使用特殊字符进行占位，但是目前还不知道其他字符会不会丢失，因此，使用json从而五险在关心字符丢失问题
-                sseEmitter.send(SseEmitter.event().id(restMsgUuid).reconnectTime(60 * 1000L).data("{\"content\": \"" + c + "\"}", org.springframework.http.MediaType.APPLICATION_JSON));
+
+                sseEmitter.send(SseEmitter.event().id(restMsgUuid).reconnectTime(60 * 1000L).data(delta.toJSONString(), org.springframework.http.MediaType.APPLICATION_JSON));
                 // 用于保存本次聊天记录
-                responseContent.append(c);
+                responseContent.append(delta.getString("content"));
 //                System.out.println(c);
 
             }
@@ -215,6 +220,9 @@ public class SseClient {
             log.info("用户{},消息id:{},推送异常:{}", uuid, restMsgUuid, e.getMessage());
             sseEmitter.complete();
         }
+
+        // 判断是否返回新创建的sse
+        return newSseEmitterFlag ? sseEmitter : null;
     }
 
     /**

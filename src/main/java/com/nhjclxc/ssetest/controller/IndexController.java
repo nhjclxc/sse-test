@@ -25,13 +25,13 @@ public class IndexController {
 
     @CrossOrigin
     @GetMapping("/sendMsg")
-    public String sendMsg(String uuid, String text, HttpServletResponse response) {
+    public SseEmitter sendMsg(String uuid, String text, HttpServletResponse response) {
         response.setHeader("Content-Type", "text/event-stream");
         response.setHeader("Cache-Control", "no-cache");
         response.setHeader("Connection", "keep-alive");
 //        sseClient.sendMessage(uuid, text);
-        sseClient.sendMessageByDeepSeek(uuid, text);
-        return "ok";
+//        return "ok";
+        return sseClient.sendMessageByDeepSeek(uuid, text);
     }
 
     /**
